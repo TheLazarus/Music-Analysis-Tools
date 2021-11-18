@@ -125,7 +125,7 @@ def findGenre(PATH):
                             totalQueried += 1
                             totalQueriedByArtist += 1
                             print(f"FOUND GENRE (ARTIST) [{lastfm_artist} - {lastfm_track}] -- {lastfm_genreByArtist}")
-                            updateTagDictionary(lastfm_genreByArtist, TAG_DICTIONARY)
+                            updateTagDictionary(lastfm_genreByArtist, TAG_DICTIONARY, NORMALIZED_TAG_DICTIONARY)
                             if(row == totalRows - 1):
                                 TAG_DICTIONARY = dict(sorted(NORMALIZED_TAG_DICTIONARY.items(), key=operator.itemgetter(1),reverse=True))
                             sheet.cell(row=STARTING_ROW, column=NORMALIZED_TAG_COUNT_COLUMN).value = f'{NORMALIZED_TAG_DICTIONARY}'
