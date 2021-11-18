@@ -2,11 +2,14 @@ import pylast
 import openpyxl
 import os
 import os.path
+import operator
 
 API_KEY = "dcc5bf7ecee79d43278e2b73781a9c26"  
 API_SECRET = "601291923fd46dda602de733f497cc17"
 USERNAME = "laazarus"
 PASSWORD_HASH = pylast.md5("6w5T-FgJH8fB.fx")
+
+
 
 def setupLast(API_KEY, API_SECRET, username, password_hash):
     network = pylast.LastFMNetwork(
@@ -21,8 +24,8 @@ def setupLast(API_KEY, API_SECRET, username, password_hash):
 network = setupLast(API_KEY, API_SECRET, USERNAME, PASSWORD_HASH)
 
 def findGenreByTrackOrArtist(type, artist, track):
-    allGenreList = [type]
-    genreList = [type]
+    allGenreList = []
+    genreList = []
     totalWeight = 0
     runningWeight = 0
     if(type == 'TR'):
@@ -31,14 +34,14 @@ def findGenreByTrackOrArtist(type, artist, track):
             raise ValueError("No info found for this track")
         else:
             for topItem in topItems:
-                allGenreList.append((topItem.item.get_name(), topItem.weight))
-                print(topItem.item.get_name(), topItem.weight)
-            for i in range(1,len(allGenreList)):
+                allGenreList.append([topItem.item.get_name(), topItem.weight])
+                #print(topItem.item.get_name(), topItem.weight)
+            for i in range(0,len(allGenreList)):
                 totalWeight += int(allGenreList[i][1])
-            for i in range(1, len(allGenreList)):
+            for i in range(0, len(allGenreList)):
                 if(runningWeight/totalWeight <= 0.90):
                     runningWeight += int(allGenreList[i][1])
-                    genreList.append(allGenreList[i][0])
+                    genreList.append([allGenreList[i][0], allGenreList[i][1]])
                 else:
                     break
             return genreList
@@ -48,17 +51,29 @@ def findGenreByTrackOrArtist(type, artist, track):
             raise ValueError("No info found for this artist")
         else:
             for topItem in topArtistItems:
-                    allGenreList.append((topItem.item.get_name(), topItem.weight))
-                    print(topItem.item.get_name(), topItem.weight)
-            for i in range(1,len(allGenreList)):
+                    allGenreList.append([topItem.item.get_name(), topItem.weight])
+                    #print(topItem.item.get_name(), topItem.weight)
+            for i in range(0,len(allGenreList)):
                 totalWeight += int(allGenreList[i][1])
-            for i in range(1, len(allGenreList)):
+            for i in range(0, len(allGenreList)):
                 if(runningWeight/totalWeight <= 0.90):
                     runningWeight += int(allGenreList[i][1])
-                    genreList.append(allGenreList[i][0])
+                    genreList.append([allGenreList[i][0], allGenreList[i][1]])
                 else:
                     break
             return genreList
+
+def updateTagDictionary(tagList, dictionary,normalized_dictionary):
+    totalSum = 0
+    for tag in tagList:
+        if dictionary.get(tag[0]) is not None:
+            dictionary[tag[0]] += int(tag[1])
+        else:
+            dictionary[tag[0]] = int(tag[1])
+    for tag in dictionary.keys():
+        totalSum += dictionary[tag]
+    for tag in dictionary.keys():
+        normalized_dictionary[tag] = dictionary[tag] / totalSum
 
 def findGenre(PATH):
     STARTING_ROW = 3
@@ -66,10 +81,13 @@ def findGenre(PATH):
     TOTAL_ROWS_COLUMN = 5
     LASTFM_GENRE_COLUMN = 6
     LASTFM_INFO_COLUMN = 7
+    NORMALIZED_TAG_COUNT_COLUMN = 8
     TRACK_COLUMN = 2
     for root, dirs, files in os.walk(PATH):
         for File in files:
             try:
+                TAG_DICTIONARY = dict()
+                NORMALIZED_TAG_DICTIONARY = dict()
                 root = root.replace("\\","/")
                 dataFilePath = f"{root}{File}"
                 print(f"Now Querying Last.fm with all the entries in -- {dataFilePath}")
@@ -89,19 +107,29 @@ def findGenre(PATH):
                         lastfm_artist = network.get_artist(artist)
                         lastfm_track = network.get_track(title=track, artist=artist)
                         lastfm_genreByTrack = findGenreByTrackOrArtist('TR', lastfm_artist, lastfm_track)
-                        lastfm_genre_cell.value = f'{lastfm_genreByTrack}'
-                        wb.save(dataFilePath)
+                        lastfm_genre_cell.value = f'TRACK - {lastfm_genreByTrack}'
+                        #wb.save(dataFilePath)
                         totalQueried += 1
                         totalQueriedByTrack += 1
                         print(f"FOUND GENRE (TRACK) [{lastfm_artist} - {lastfm_track}] -- {lastfm_genreByTrack}")
+                        updateTagDictionary(lastfm_genreByTrack, TAG_DICTIONARY, NORMALIZED_TAG_DICTIONARY)
+                        if(row == totalRows - 1):
+                            NORMALIZED_TAG_DICTIONARY = dict(sorted(NORMALIZED_TAG_DICTIONARY.items(), key=operator.itemgetter(1),reverse=True))
+                        sheet.cell(row=STARTING_ROW, column=NORMALIZED_TAG_COUNT_COLUMN).value = f'{NORMALIZED_TAG_DICTIONARY}'
+                        wb.save(dataFilePath)
                     except:
                         try:
                             lastfm_genreByArtist = findGenreByTrackOrArtist('AR', lastfm_artist, lastfm_track)
-                            lastfm_genre_cell.value = f'{lastfm_genreByArtist}'
-                            wb.save(dataFilePath)
+                            lastfm_genre_cell.value = f'ARTIST - {lastfm_genreByArtist}'
+                            #wb.save(dataFilePath)
                             totalQueried += 1
                             totalQueriedByArtist += 1
                             print(f"FOUND GENRE (ARTIST) [{lastfm_artist} - {lastfm_track}] -- {lastfm_genreByArtist}")
+                            updateTagDictionary(lastfm_genreByArtist, TAG_DICTIONARY)
+                            if(row == totalRows - 1):
+                                TAG_DICTIONARY = dict(sorted(NORMALIZED_TAG_DICTIONARY.items(), key=operator.itemgetter(1),reverse=True))
+                            sheet.cell(row=STARTING_ROW, column=NORMALIZED_TAG_COUNT_COLUMN).value = f'{NORMALIZED_TAG_DICTIONARY}'
+                            wb.save(dataFilePath)
                         except:
                             lastfm_genre_cell.value = 'N/A'
                             wb.save(dataFilePath)
