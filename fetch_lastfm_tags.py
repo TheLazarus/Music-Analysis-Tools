@@ -4,10 +4,10 @@ import os
 import os.path
 import operator
 
-API_KEY = "dcc5bf7ecee79d43278e2b73781a9c26"  
-API_SECRET = "601291923fd46dda602de733f497cc17"
-USERNAME = "laazarus"
-PASSWORD_HASH = pylast.md5("6w5T-FgJH8fB.fx")
+API_KEY = ""  
+API_SECRET = ""
+USERNAME = ""
+PASSWORD_HASH = pylast.md5("")
 
 
 
