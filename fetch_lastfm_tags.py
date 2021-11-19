@@ -3,6 +3,7 @@ import openpyxl
 import os
 import os.path
 import operator
+import json
 
 API_KEY = ""  
 API_SECRET = ""
@@ -29,7 +30,7 @@ def findGenreByTrackOrArtist(type, artist, track):
     totalWeight = 0
     runningWeight = 0
     if(type == 'TR'):
-        topItems = track.get_top_tags(limit=None)
+        topItems = track.get_top_tags(limit=5)
         if(len(topItems) == 0):
             raise ValueError("No info found for this track")
         else:
@@ -39,14 +40,14 @@ def findGenreByTrackOrArtist(type, artist, track):
             for i in range(0,len(allGenreList)):
                 totalWeight += int(allGenreList[i][1])
             for i in range(0, len(allGenreList)):
-                if(runningWeight/totalWeight <= 0.90):
+                if(runningWeight/totalWeight <= 0.95):
                     runningWeight += int(allGenreList[i][1])
                     genreList.append([allGenreList[i][0], allGenreList[i][1]])
                 else:
                     break
             return genreList
     elif(type == 'AR'):
-        topArtistItems = artist.get_top_tags(limit=None)
+        topArtistItems = artist.get_top_tags(limit=5)
         if(len(topArtistItems) == 0):
             raise ValueError("No info found for this artist")
         else:
@@ -56,7 +57,7 @@ def findGenreByTrackOrArtist(type, artist, track):
             for i in range(0,len(allGenreList)):
                 totalWeight += int(allGenreList[i][1])
             for i in range(0, len(allGenreList)):
-                if(runningWeight/totalWeight <= 0.90):
+                if(runningWeight/totalWeight <= 0.95):
                     runningWeight += int(allGenreList[i][1])
                     genreList.append([allGenreList[i][0], allGenreList[i][1]])
                 else:
@@ -75,6 +76,33 @@ def updateTagDictionary(tagList, dictionary,normalized_dictionary):
     for tag in dictionary.keys():
         normalized_dictionary[tag] = dictionary[tag] / totalSum
 
+
+def generateTopTags(norm_dict):
+    GTZAN_TOP_TAGS = {}
+    TOTAL_NORMALIZED_TAG_COUNT  = 0
+    for tag in norm_dict.keys():
+        TOTAL_NORMALIZED_TAG_COUNT += norm_dict[tag]
+    print(f"TOTAL TAG COUNT {TOTAL_NORMALIZED_TAG_COUNT}")
+    running_norm_tag_count = 0
+    for tag in norm_dict.keys():
+        if(running_norm_tag_count/TOTAL_NORMALIZED_TAG_COUNT <= 0.95):
+            running_norm_tag_count += norm_dict[tag]
+            GTZAN_TOP_TAGS[tag] = norm_dict[tag]
+        else:
+            break
+    return GTZAN_TOP_TAGS
+
+def normalizeExcerptTags(tagList):
+    TAGS = {}
+    totalCount = 0
+    for tag in tagList:
+        totalCount += int(tag[1])
+    for tag in tagList:
+        TAGS[tag[0]] = int(tag[1]) / totalCount
+    return TAGS
+    
+
+
 def findGenre(PATH):
     STARTING_ROW = 3
     ARTIST_COLUMN = 3
@@ -82,9 +110,14 @@ def findGenre(PATH):
     LASTFM_GENRE_COLUMN = 6
     LASTFM_INFO_COLUMN = 7
     NORMALIZED_TAG_COUNT_COLUMN = 8
+    GTZAN_TOP_TAGS_COLUMN = 9
     TRACK_COLUMN = 2
+    GTZAN_ALL_TOP_TAGS = {}
+    GTZAN_ALL_EXCERPT_TAGS = {}
+    GENRE_SCORES = {}
     for root, dirs, files in os.walk(PATH):
         for File in files:
+            GTZAN_EXCERPT_TAGS = []
             try:
                 TAG_DICTIONARY = dict()
                 NORMALIZED_TAG_DICTIONARY = dict()
@@ -107,7 +140,9 @@ def findGenre(PATH):
                         lastfm_artist = network.get_artist(artist)
                         lastfm_track = network.get_track(title=track, artist=artist)
                         lastfm_genreByTrack = findGenreByTrackOrArtist('TR', lastfm_artist, lastfm_track)
-                        lastfm_genre_cell.value = f'TRACK - {lastfm_genreByTrack}'
+                        normalizedExcerptTags = normalizeExcerptTags(lastfm_genreByTrack)
+                        GTZAN_EXCERPT_TAGS.append(normalizedExcerptTags)
+                        lastfm_genre_cell.value = f'TRACK - {normalizedExcerptTags}'
                         #wb.save(dataFilePath)
                         totalQueried += 1
                         totalQueriedByTrack += 1
@@ -115,12 +150,18 @@ def findGenre(PATH):
                         updateTagDictionary(lastfm_genreByTrack, TAG_DICTIONARY, NORMALIZED_TAG_DICTIONARY)
                         if(row == totalRows - 1):
                             NORMALIZED_TAG_DICTIONARY = dict(sorted(NORMALIZED_TAG_DICTIONARY.items(), key=operator.itemgetter(1),reverse=True))
+                            GTZAN_Top_Tags = generateTopTags(NORMALIZED_TAG_DICTIONARY)
+                            GTZAN_ALL_TOP_TAGS[File] = GTZAN_Top_Tags
+                            GTZAN_ALL_EXCERPT_TAGS[File] = GTZAN_EXCERPT_TAGS
+                            sheet.cell(row=STARTING_ROW, column=GTZAN_TOP_TAGS_COLUMN).value = f'{GTZAN_Top_Tags}'
                         sheet.cell(row=STARTING_ROW, column=NORMALIZED_TAG_COUNT_COLUMN).value = f'{NORMALIZED_TAG_DICTIONARY}'
                         wb.save(dataFilePath)
                     except:
                         try:
                             lastfm_genreByArtist = findGenreByTrackOrArtist('AR', lastfm_artist, lastfm_track)
-                            lastfm_genre_cell.value = f'ARTIST - {lastfm_genreByArtist}'
+                            normalizedExcerptTags = normalizeExcerptTags(lastfm_genreByArtist)
+                            GTZAN_EXCERPT_TAGS.append(normalizedExcerptTags)
+                            lastfm_genre_cell.value = f'ARTIST - {normalizedExcerptTags}'
                             #wb.save(dataFilePath)
                             totalQueried += 1
                             totalQueriedByArtist += 1
@@ -128,14 +169,25 @@ def findGenre(PATH):
                             updateTagDictionary(lastfm_genreByArtist, TAG_DICTIONARY, NORMALIZED_TAG_DICTIONARY)
                             if(row == totalRows - 1):
                                 NORMALIZED_TAG_DICTIONARY = dict(sorted(NORMALIZED_TAG_DICTIONARY.items(), key=operator.itemgetter(1),reverse=True))
+                                GTZAN_Top_Tags = generateTopTags(NORMALIZED_TAG_DICTIONARY)
+                                GTZAN_ALL_TOP_TAGS[File] = GTZAN_Top_Tags
+                                GTZAN_ALL_EXCERPT_TAGS[File] = GTZAN_EXCERPT_TAGS
+                                sheet.cell(row=STARTING_ROW, column=GTZAN_TOP_TAGS_COLUMN).value = f'{GTZAN_Top_Tags}'
                             sheet.cell(row=STARTING_ROW, column=NORMALIZED_TAG_COUNT_COLUMN).value = f'{NORMALIZED_TAG_DICTIONARY}'
                             wb.save(dataFilePath)
                         except:
                             lastfm_genre_cell.value = 'N/A'
+                            GTZAN_EXCERPT_TAGS.append({})   
                             if(row == totalRows - 1):
                                 NORMALIZED_TAG_DICTIONARY = dict(sorted(NORMALIZED_TAG_DICTIONARY.items(), key=operator.itemgetter(1),reverse=True))
+                                GTZAN_Top_Tags = generateTopTags(NORMALIZED_TAG_DICTIONARY)
+                                GTZAN_ALL_TOP_TAGS[File] = GTZAN_Top_Tags
+                                GTZAN_ALL_EXCERPT_TAGS[File] = GTZAN_EXCERPT_TAGS
+                                sheet.cell(row=STARTING_ROW, column=GTZAN_TOP_TAGS_COLUMN).value = f'{GTZAN_Top_Tags}'
                             wb.save(dataFilePath)
                             print("No information found")
+                print(GTZAN_ALL_TOP_TAGS)
+                print(GTZAN_ALL_EXCERPT_TAGS)
                 print(f"Total Song Genres Found - {totalQueried} / {sheet.max_row - STARTING_ROW + 1}")
                 print(f"Total Song Genres Found (By Track) - {totalQueriedByTrack}")
                 print(f"Total Song Genres Found (By Artist) - {totalQueriedByArtist}")
@@ -144,4 +196,43 @@ def findGenre(PATH):
             except:
                 wb.save(dataFilePath)
                 print("Error Opening File")
+    
+    #SAVING GENRE SCORES FOR EACH EXCERPT
+    for excerptTag, excerptTagSetList in GTZAN_ALL_EXCERPT_TAGS.items():
+        print(f'{excerptTag}')
+        count = 0
+        SCORE_TEMP = dict()
+        for tagSet in excerptTagSetList:
+            SCORE_TAG_TEMP = dict()
+            if tagSet:
+                for labelTag, labelTagDict in GTZAN_ALL_TOP_TAGS.items():
+                    genre_score = 0
+                    for tag, tagScore in tagSet.items():
+                        if(tag in labelTagDict):
+                            genre_score += tagScore * labelTagDict[tag]
+                    SCORE_TAG_TEMP[labelTag] = genre_score
+                SCORE_TEMP[count] = SCORE_TAG_TEMP
+                count += 1
+            else:
+                SCORE_TEMP[count] = 'N/A'
+                count += 1
+        with open(f'../fingerprinter/GTZAN-Last.fm Genres/{excerptTag}.txt', 'w') as json_file:
+            json.dump(SCORE_TEMP, json_file)
+        print(SCORE_TEMP)
+            
+
+            
+
+    
+    
+            
+
+                        
+                
+                
+        
+        
+
+            
+    
 findGenre("../fingerprinter/GTZAN-Last.fm Genres/")
